@@ -13,6 +13,9 @@ Then follow the Installation section of the original
 running the pretrained checkpoint.
 After this, build another venev for LIBERO env, following the [official guide](https://github.com/Physical-Intelligence/openpi/tree/main/examples/libero).
 
+It is also required to pull the files containing text-latent from [hugging-face](https://huggingface.co/datasets/Shady0057/pi0-text-latent).
+All files should be organized as `openpi/exp_data/pi0/*.pkl`.
+
 ## Running Experiments
 Open two terminals, in the first one, activate the first venv run:
 ```bash
@@ -25,6 +28,11 @@ python examples/libero/main.py
 ```
 This will by default run the extrapolation experiments, while this script actually prepared all experiments in the paper.
 You can go to this script and config what experiments you would like to run.
+
+## Text Latent Identification
+For the text latent identification, we provide a script to run it at `scripts/text_latent.py`.
+It will launch the model and run it on the libero-dataset to record the model's hidden states.
+You don't need to setup the dataset explicitly, as the script will download the dataset automatically.
 
 ## Changes to LIBERO benchmark
 The openpi project includes the LIBERO as a part of the repo. Thus we build new task suites by adding bddl files to it
