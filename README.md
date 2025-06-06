@@ -2,6 +2,8 @@ This is the official implementation of the paper: **Task Reconstruction and Extr
 
 [[Arxiv](https://arxiv.org/pdf/2505.03500)]
 
+![img.png](img.png)
+
 ## Installation
 The whole repo is built upon the [openpi](https://github.com/Physical-Intelligence/openpi). Thus, the
 installation is the same as the openpi project.
