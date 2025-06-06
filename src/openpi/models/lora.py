@@ -121,25 +121,32 @@ class FeedForward(nn.Module):
             )
 
     @nn.compact
-    def __call__(self, x):
+    def __call__(self, x, activation=None):
         dtype = x.dtype  # original dtype, could be half-precision
-        ff_gate = self._dot(
-            x,
-            self.w_gating[0],
-            None if self.w_gating_lora is None else (self.w_gating_lora[0][0], self.w_gating_lora[1][0]),
-        )
-        gate_value = nn.gelu(ff_gate)
+        if activation is None or isinstance(activation, dict):
+            ff_gate = self._dot(
+                x,
+                self.w_gating[0],
+                None if self.w_gating_lora is None else (self.w_gating_lora[0][0], self.w_gating_lora[1][0]),
+            )
+            gate_value = nn.gelu(ff_gate)
 
-        ff1 = self._dot(
-            x,
-            self.w_gating[1],
-            None if self.w_gating_lora is None else (self.w_gating_lora[0][1], self.w_gating_lora[1][1]),
-        )
-        activations = gate_value * ff1
+            ff1 = self._dot(
+                x,
+                self.w_gating[1],
+                None if self.w_gating_lora is None else (self.w_gating_lora[0][1], self.w_gating_lora[1][1]),
+            )
+            activations = gate_value * ff1
+            if isinstance(activation, dict):
+                raise ValueError("Activation dict not supported yet.")
+                for token_index in activation:
+                    activations = activations.at[:, token_index].set(activation[token_index])
+        else:
+            activations = jnp.repeat(activation, x.shape[0], axis=0)
 
         outputs = self._dot(activations, self.w_linear, self.w_linear_lora)
         assert outputs.dtype == dtype
-        return outputs
+        return outputs, activations
 
     def _dot(self, x: at.Array, w: at.Array, lora_weights: tuple[at.Array, at.Array] | None) -> at.Array:
         base = jnp.dot(x, w.astype(x.dtype))

@@ -8,11 +8,12 @@ import jax
 import jax.numpy as jnp
 from typing_extensions import override
 
-from openpi.models import model as _model
 import openpi.models.gemma as _gemma
 import openpi.models.siglip as _siglip
-from openpi.shared import array_typing as at
 import openpi.shared.nnx_utils as nnx_utils
+from openpi.models import model as _model
+from openpi.models.gemma import Analysis
+from openpi.shared import array_typing as at
 
 logger = logging.getLogger("openpi")
 
@@ -47,7 +48,7 @@ def make_attn_mask(input_mask, mask_ar):
 
 @at.typecheck
 def posemb_sincos(
-    pos: at.Real[at.Array, " b"], embedding_dim: int, min_period: float, max_period: float
+        pos: at.Real[at.Array, " b"], embedding_dim: int, min_period: float, max_period: float
 ) -> at.Float[at.Array, "b {embedding_dim}"]:
     """Computes sine-cosine positional embedding vectors for scalar positions."""
     if embedding_dim % 2 != 0:
@@ -173,7 +174,7 @@ class Pi0(_model.BaseModel):
 
     @at.typecheck
     def embed_prefix(
-        self, obs: _model.Observation
+            self, obs: _model.Observation
     ) -> tuple[at.Float[at.Array, "b s emb"], at.Bool[at.Array, "b s"], at.Bool[at.Array, " s"]]:
         input_mask = []
         ar_mask = []
@@ -207,7 +208,7 @@ class Pi0(_model.BaseModel):
 
     @at.typecheck
     def embed_suffix(
-        self, obs: _model.Observation, noisy_actions: _model.Actions, timestep: at.Float[at.Array, " b"]
+            self, obs: _model.Observation, noisy_actions: _model.Actions, timestep: at.Float[at.Array, " b"]
     ) -> tuple[at.Float[at.Array, "b s emb"], at.Bool[at.Array, "b s"], at.Bool[at.Array, " s"]]:
         input_mask = []
         ar_mask = []
@@ -239,7 +240,7 @@ class Pi0(_model.BaseModel):
 
     @override
     def compute_loss(
-        self, rng: at.KeyArrayLike, observation: _model.Observation, actions: _model.Actions, *, train: bool = False
+            self, rng: at.KeyArrayLike, observation: _model.Observation, actions: _model.Actions, *, train: bool = False
     ) -> at.Float[at.Array, "*b ah"]:
         preprocess_rng, noise_rng, time_rng = jax.random.split(rng, 3)
         observation = _model.preprocess_observation(preprocess_rng, observation, train=train)
@@ -258,21 +259,104 @@ class Pi0(_model.BaseModel):
         ar_mask = jnp.concatenate([prefix_ar_mask, suffix_ar_mask], axis=0)
         attn_mask = make_attn_mask(input_mask, ar_mask)
         positions = jnp.cumsum(input_mask, axis=1) - 1
-        (prefix_out, suffix_out), _ = self.PaliGemma.llm(
+        (prefix_out, suffix_out), _, _ = self.PaliGemma.llm(
             [prefix_tokens, suffix_tokens], mask=attn_mask, positions=positions
         )
-        v_t = self.action_out_proj(suffix_out[:, -self.action_horizon :])
+        v_t = self.action_out_proj(suffix_out[:, -self.action_horizon:])
 
         return jnp.mean(jnp.square(v_t - u_t), axis=-1)
 
+    def _encode(self,
+                mlp_activation=None,
+                prefix_tokens=None,
+                prefix_attn_mask=None,
+                positions=None,
+                hidden_states_to_add=None,
+                layer_head_to_ablate=None):
+        _, kv_cache, layer_output = self.PaliGemma.llm([prefix_tokens, None], mask=prefix_attn_mask,
+                                                       positions=positions,
+                                                       mlp_activation=mlp_activation,
+                                                       hidden_states_to_add=hidden_states_to_add,
+                                                       layer_head_to_ablate=layer_head_to_ablate)
+        return kv_cache, layer_output
+
+    def compute_loss_with_extra(self, rng: at.KeyArrayLike,
+                                observation: _model.Observation,
+                                actions: _model.Actions,
+                                *,
+                                train: bool = False,
+                                mlp_activation=None,
+                                layer_head_to_ablate=None,
+                                hidden_states_to_add=None,
+                                ):
+        assert layer_head_to_ablate is None
+        preprocess_rng, noise_rng, time_rng = jax.random.split(rng, 3)
+        observation = _model.preprocess_observation(preprocess_rng, observation, train=train)
+
+        batch_shape = actions.shape[:-2]
+        noise = jax.random.normal(noise_rng, actions.shape)
+        time = jax.random.beta(time_rng, 1.5, 1, batch_shape) * 0.999 + 0.001
+        time_expanded = time[..., None, None]
+        x_t = time_expanded * noise + (1 - time_expanded) * actions
+        u_t = noise - actions
+
+        # encode
+        prefix_tokens, prefix_mask, prefix_ar_mask = self.embed_prefix(observation)
+        suffix_tokens, suffix_mask, suffix_ar_mask = self.embed_suffix(observation, x_t, time)
+        positions = jnp.cumsum(prefix_mask, axis=1) - 1
+        prefix_attn_mask = make_attn_mask(prefix_mask, prefix_ar_mask)
+        kv_cache, layer_output = self._encode(mlp_activation, prefix_tokens, prefix_attn_mask, positions,
+                                              hidden_states_to_add=hidden_states_to_add)
+
+        # decode
+        prefix_attn_mask = einops.repeat(prefix_mask, "b p -> b s p", s=suffix_tokens.shape[1])
+        positions = jnp.sum(prefix_mask, axis=-1)[:, None] + jnp.cumsum(suffix_mask, axis=-1) - 1
+        suffix_attn_mask = make_attn_mask(suffix_mask, suffix_ar_mask)
+        full_attn_mask = jnp.concatenate([prefix_attn_mask, suffix_attn_mask], axis=-1)
+        (prefix_out, suffix_out), _, suffix_output = self.PaliGemma.llm(
+            [None, suffix_tokens], mask=full_attn_mask, positions=positions, kv_cache=kv_cache
+        )
+        assert prefix_out is None
+
+        v_t = self.action_out_proj(suffix_out[:, -self.action_horizon:])
+
+        loss = jnp.mean(jnp.square(v_t - u_t), axis=-1)
+
+        # running average or sum if no overflow
+        hidden_states = Analysis.get_hidden_states(layer_output)
+        post_attn_embedding = Analysis.get_post_attn_embedding(layer_output)
+        post_attn = Analysis.get_post_attn_value(layer_output)[0]
+
+        # mlp_activation = Analysis.get_mlp_activation(layer_output)
+        # mean_sum = mlp_activation.sum(axis=1)
+        # var_sum = (mlp_activation ** 2).sum(axis=1)
+        attention_score = Analysis.get_attention(suffix_output).sum(axis=1)[:, 0]
+        text_representation = Analysis.get_text_representation(layer_output).sum(axis=1)
+        result = dict(loss_sum=loss.sum(axis=0),
+                      text_representation=text_representation,
+                      attention_score_sum=attention_score,
+                      hidden_states_sum=hidden_states.sum(axis=1),
+                      post_attn_embedding_sum=post_attn_embedding.sum(axis=1),
+                      post_attn_sum=post_attn.sum(axis=1)
+                      # mean_sum=mean_sum,
+                      # var_sum=var_sum,
+                      )
+
+        # debug
+        # original_loss = self.compute_loss(rng, observation, actions, train=train)
+        # result["original_loss"] = original_loss.sum(axis=0)
+        return result
+
     @override
-    def sample_actions(
-        self,
-        rng: at.KeyArrayLike,
-        observation: _model.Observation,
-        *,
-        num_steps: int | at.Int[at.Array, ""] = 10,
-    ) -> _model.Actions:
+    def sample_actions(self,
+                       rng: at.KeyArrayLike,
+                       observation: _model.Observation,
+                       *,
+                       num_steps: int | at.Int[at.Array, ""] = 10,
+                       mlp_activation=None,
+                       hidden_states_to_add=None,
+                       ) -> tuple[_model.Actions, tuple[at.Float[at.Array, "l b _t _d"] | None, at.Array,
+    at.Array, at.Array | None, list[at.Array | None], tuple[at.Array | None, at.Array | None]]]:
         observation = _model.preprocess_observation(None, observation, train=False)
         # note that we use the convention more common in diffusion literature, where t=1 is noise and t=0 is the target
         # distribution. yes, this is the opposite of the pi0 paper, and I'm sorry.
@@ -284,7 +368,8 @@ class Pi0(_model.BaseModel):
         prefix_tokens, prefix_mask, prefix_ar_mask = self.embed_prefix(observation)
         prefix_attn_mask = make_attn_mask(prefix_mask, prefix_ar_mask)
         positions = jnp.cumsum(prefix_mask, axis=1) - 1
-        _, kv_cache = self.PaliGemma.llm([prefix_tokens, None], mask=prefix_attn_mask, positions=positions)
+        kv_cache, layer_output = self._encode(mlp_activation, prefix_tokens, prefix_attn_mask, positions,
+                                              hidden_states_to_add=hidden_states_to_add)
 
         def step(carry):
             x_t, time = carry
@@ -308,18 +393,21 @@ class Pi0(_model.BaseModel):
             # `positions` is shape (b, suffix_len) indicating the positions of the suffix tokens
             positions = jnp.sum(prefix_mask, axis=-1)[:, None] + jnp.cumsum(suffix_mask, axis=-1) - 1
 
-            (prefix_out, suffix_out), _ = self.PaliGemma.llm(
-                [None, suffix_tokens], mask=full_attn_mask, positions=positions, kv_cache=kv_cache
+            (prefix_out, suffix_out), _, _ = self.PaliGemma.llm(
+                [None, suffix_tokens], mask=full_attn_mask, positions=positions, kv_cache=kv_cache,
             )
             assert prefix_out is None
-            v_t = self.action_out_proj(suffix_out[:, -self.action_horizon :])
+            v_t = self.action_out_proj(suffix_out[:, -self.action_horizon:])
 
             return x_t + dt * v_t, time + dt
 
-        def cond(carry):
-            x_t, time = carry
-            # robust to floating-point error
-            return time >= -dt / 2
+        # def cond(carry):
+        #     x_t, time = carry
+        #     # robust to floating-point error
+        #     return
+        x_t, time = noise, 1.0
+        while time >= -dt / 2:
+            x_t, time = step((x_t, time))
 
-        x_0, _ = jax.lax.while_loop(cond, step, (noise, 1.0))
-        return x_0
+        # x_0, _ = jax.lax.while_loop(cond, step, (noise, 1.0))
+        return x_t, layer_output

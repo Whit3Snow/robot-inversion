@@ -262,7 +262,10 @@ class LeRobotLiberoDataConfig(DataConfigFactory):
                         "observation/wrist_image": "wrist_image",
                         "observation/state": "state",
                         "actions": "actions",
+                        "frame_index": "frame_index",
                         "prompt": "prompt",
+                        "task_index": "task_index",
+                        "actions_is_pad": "actions_is_pad",
                     }
                 )
             ]

@@ -1,22 +1,23 @@
 import abc
-from collections.abc import Sequence
 import dataclasses
 import enum
 import logging
 import pathlib
+from collections.abc import Sequence
+from typing import Dict
 from typing import Generic, TypeVar
 
 import augmax
-from flax import nnx
-from flax import struct
-from flax import traverse_util
 import jax
 import jax.numpy as jnp
 import numpy as np
 import orbax.checkpoint as ocp
+from flax import nnx
+from flax import struct
+from flax import traverse_util
 
-from openpi.shared import image_tools
 import openpi.shared.array_typing as at
+from openpi.shared import image_tools
 
 logger = logging.getLogger("openpi")
 
@@ -36,7 +37,6 @@ IMAGE_KEYS = (
     "left_wrist_0_rgb",
     "right_wrist_0_rgb",
 )
-
 
 # This may need change if we release a small model.
 IMAGE_RESOLUTION = (224, 224)
@@ -135,12 +135,12 @@ Actions = at.Float[ArrayT, "*b ah ad"]
 
 
 def preprocess_observation(
-    rng: at.KeyArrayLike | None,
-    observation: Observation,
-    *,
-    train: bool = False,
-    image_keys: Sequence[str] = IMAGE_KEYS,
-    image_resolution: tuple[int, int] = IMAGE_RESOLUTION,
+        rng: at.KeyArrayLike | None,
+        observation: Observation,
+        *,
+        train: bool = False,
+        image_keys: Sequence[str] = IMAGE_KEYS,
+        image_resolution: tuple[int, int] = IMAGE_RESOLUTION,
 ) -> Observation:
     """Preprocess the observations by performing image augmentations (if train=True), resizing (if necessary), and
     filling in a default image mask (if necessary).
@@ -223,8 +223,42 @@ class BaseModelConfig(abc.ABC):
     def create(self, rng: at.KeyArrayLike) -> "BaseModel":
         """Create a new model, initializing parameters."""
 
+    def separate_params(self, params_dict, key, len):
+        params = params_dict[key]
+
+        def get_num_layers(nested_dict: Dict) -> int:
+            """Traverses the nested dict to find the first leaf and returns the number of layers."""
+            if isinstance(nested_dict, dict):
+                # Recursively check the first key's value
+                first_key = next(iter(nested_dict))
+                return get_num_layers(nested_dict[first_key])
+            else:
+                # Return the size of the first dimension (layers)
+                return nested_dict.shape[0]
+
+        def split_layers(nested_dict: Dict) -> list[Dict]:
+            """Splits a nested dict into sub-dictionaries, one per layer."""
+            num_layers = get_num_layers(nested_dict)
+            return [split_layer(nested_dict, i) for i in range(num_layers)]
+
+        def split_layer(nested_dict: Dict, layer_idx: int) -> Dict:
+            """Creates a sub-dictionary for a specific layer index."""
+            if isinstance(nested_dict, dict):
+                # Recurse into each key-value pair
+                return {k: split_layer(v, layer_idx) for k, v in nested_dict.items()}
+            else:
+                # Slice the array at the specified layer index
+                return nested_dict[layer_idx]
+
+        ret = split_layers(params)
+        return {key+"_"+str(i): ret[i] for i in range(len)}
+
     def load(self, params: at.Params, *, remove_extra_params: bool = True) -> "BaseModel":
         """Create a model with the given parameters."""
+        saparated_params = self.separate_params(params["PaliGemma"]["llm"], "layers", 18)
+        variables = params["PaliGemma"]["llm"].pop("layers")
+        del variables
+        params["PaliGemma"]["llm"].update(saparated_params)
         model = nnx.eval_shape(self.create, jax.random.key(0))
         graphdef, state = nnx.split(model)
         if remove_extra_params:
@@ -258,12 +292,12 @@ class BaseModel(nnx.Module, abc.ABC):
 
     @abc.abstractmethod
     def compute_loss(
-        self,
-        rng: at.KeyArrayLike,
-        observation: Observation,
-        actions: Actions,
-        *,
-        train: bool = False,
+            self,
+            rng: at.KeyArrayLike,
+            observation: Observation,
+            actions: Actions,
+            *,
+            train: bool = False,
     ) -> at.Float[at.Array, "*b ah"]: ...
 
     @abc.abstractmethod
@@ -271,11 +305,11 @@ class BaseModel(nnx.Module, abc.ABC):
 
 
 def restore_params(
-    params_path: pathlib.Path | str,
-    *,
-    restore_type: type[np.ndarray] | type[jax.Array] = jax.Array,
-    dtype: jnp.dtype | None = None,
-    sharding: jax.sharding.Sharding | None = None,
+        params_path: pathlib.Path | str,
+        *,
+        restore_type: type[np.ndarray] | type[jax.Array] = jax.Array,
+        dtype: jnp.dtype | None = None,
+        sharding: jax.sharding.Sharding | None = None,
 ) -> at.Params:
     """Restores unstructured params PyTree from a checkpoint.
 

@@ -70,6 +70,15 @@ class LiberoInputs(transforms.DataTransformFn):
         if "prompt" in data:
             inputs["prompt"] = data["prompt"]
 
+        if "actions_is_pad" in data:
+            inputs["actions_is_pad"] = data["actions_is_pad"]
+
+        if "frame_index" in data:
+            inputs["frame_index"] = data["frame_index"]
+
+        if "task_index" in data:
+            inputs["task_index"] = data["task_index"]
+
         return inputs
 
 

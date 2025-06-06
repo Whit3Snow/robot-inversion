@@ -1,7 +1,7 @@
-from collections.abc import Iterator, Sequence
 import multiprocessing
 import os
 import typing
+from collections.abc import Iterator, Sequence
 from typing import Protocol, SupportsIndex, TypeVar
 
 import jax
@@ -121,20 +121,20 @@ def transform_dataset(dataset: Dataset, data_config: _config.DataConfig, *, skip
         [
             *data_config.repack_transforms.inputs,
             *data_config.data_transforms.inputs,
-            _transforms.Normalize(norm_stats, use_quantiles=data_config.use_quantile_norm),
+            _transforms.Normalize(norm_stats),
             *data_config.model_transforms.inputs,
         ],
     )
 
 
 def create_data_loader(
-    config: _config.TrainConfig,
-    *,
-    sharding: jax.sharding.Sharding | None = None,
-    skip_norm_stats: bool = False,
-    shuffle: bool = False,
-    num_batches: int | None = None,
-    num_workers: int = 0,
+        config: _config.TrainConfig,
+        *,
+        sharding: jax.sharding.Sharding | None = None,
+        skip_norm_stats: bool = False,
+        shuffle: bool = False,
+        num_batches: int | None = None,
+        num_workers: int = 0,
 ) -> DataLoader[tuple[_model.Observation, _model.Actions]]:
     """Create a data loader for training.
 
@@ -182,15 +182,16 @@ def create_data_loader(
 
 class TorchDataLoader:
     def __init__(
-        self,
-        dataset,
-        local_batch_size: int,
-        *,
-        sharding: jax.sharding.Sharding | None = None,
-        shuffle: bool = False,
-        num_batches: int | None = None,
-        num_workers: int = 0,
-        seed: int = 0,
+            self,
+            dataset,
+            local_batch_size: int,
+            *,
+            sharding: jax.sharding.Sharding | None = None,
+            shuffle: bool = False,
+            num_batches: int | None = None,
+            num_workers: int = 0,
+            seed: int = 0,
+            drop_last: bool = True,
     ):
         """Create a PyTorch data loader.
 
@@ -221,7 +222,6 @@ class TorchDataLoader:
             )
 
         self._sharding = sharding
-        self._num_batches = num_batches
 
         mp_context = None
         if num_workers > 0:
@@ -238,9 +238,14 @@ class TorchDataLoader:
             persistent_workers=num_workers > 0,
             collate_fn=_collate_fn,
             worker_init_fn=_worker_init_fn,
-            drop_last=True,
+            drop_last=drop_last,
             generator=generator,
         )
+
+        self._num_batches = num_batches or len(self._data_loader)
+
+    def set_num_batches(self, num_batches: int | None):
+        self._num_batches = num_batches
 
     @property
     def torch_loader(self) -> torch.utils.data.DataLoader:
@@ -250,6 +255,7 @@ class TorchDataLoader:
         num_items = 0
         while True:
             data_iter = iter(self._data_loader)
+            # print("Create iter once")
             while True:
                 if self._num_batches is not None and num_items >= self._num_batches:
                     return
