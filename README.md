@@ -1,5 +1,6 @@
 This is the official implementation of the paper: **Task Reconstruction and Extrapolation for $\pi_0$ using Text Latent**
-[Arxiv](https://arxiv.org/pdf/2505.03500)
+
+[[Arxiv](https://arxiv.org/pdf/2505.03500)]
 
 ## Installation
 The whole repo is built upon the [openpi](https://github.com/Physical-Intelligence/openpi). Thus, the
