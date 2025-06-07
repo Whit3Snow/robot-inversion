@@ -603,6 +603,20 @@ def run_extrapolation_exp():
         args.layer_to_intervene = 0
         eval_libero(args)
 
+        # TEI + TLI
+        args = Args()
+        args.task_suite_name = task_suite
+        args.layer_to_intervene = "all"
+        args.use_TEI_and_TLI = True
+        eval_libero(args)
+
+        # TLI + blank prompt
+        args = Args()
+        args.task_suite_name = task_suite
+        args.layer_to_intervene = "all"
+        args.mask_prompt_method = "blank"
+        eval_libero(args)
+
 
 if __name__ == "__main__":
     # run_reconstruction_exp()
