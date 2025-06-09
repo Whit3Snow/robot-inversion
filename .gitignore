@@ -1,6 +1,7 @@
 # Data directories.
 assets/
 checkpoints/
+exp_data/
 data/
 wandb/
 .idea

@@ -12,12 +12,14 @@ installation is the same as the openpi project.
 Here, we give a brief guide to install the openpi project.
 If your encounter any problem, please refer to the openpi project or file an issue for us.
 
-Please clone this project first.
-by
+Please clone this project first by
 
 ```bash
 git clone git@github.com:QuanyiLi/pi0-text-latent.git
 ````
+
+**Note:** I include the LIBERO to the git history instead of using git-submodule,
+so the repo size is a bit large (~200M).
 
 Then, create a conda environment with python 3.10 and install the dependencies:
 
@@ -31,7 +33,6 @@ GIT_LFS_SKIP_SMUDGE=1 uv pip install -e .
 ```
 
 This is the first venv we will use to launch the policy model.
-
 After this, we need to build another environment for the LIBERO benchmark. Please open another terminal and run:
 
 ```bash
@@ -44,8 +45,18 @@ uv pip install -e third_party/modified_libero
 export PYTHONPATH=$PYTHONPATH:$PWD/third_party/modified_libero
 ```
 
-Besides building environment, it is required to pull the files containing text-latent
-from [hugging-face](https://huggingface.co/datasets/Shady0057/pi0-text-latent).
+If you wanna skip the step for text latent identification, you can pull
+ready-to-use text-latent from [hugging-face](https://huggingface.co/datasets/Shady0057/pi0-text-latent).
+It is recommended to follow these steps:
+
+```bash
+cd pi0-text-latent/ # at the root path
+GIT_LFS_SKIP_SMUDGE=1 git clone https://huggingface.co/datasets/Shady0057/pi0-text-latent
+mv pi0-text-latent exp_data
+cd exp_data
+git lfs pull
+```
+
 All files should be organized as `openpi/exp_data/pi0/*.pkl`.
 
 ## Running Experiments
