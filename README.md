@@ -6,11 +6,37 @@ This is the official implementation of the paper: **Task Reconstruction and Extr
 
 ## Installation
 The whole repo is built upon the [openpi](https://github.com/Physical-Intelligence/openpi). Thus, the
-installation is the same as the openpi project.
+installation is the same as the openpi project. 
+Here, we give a brief guide to install the openpi project.
+If your encounter any problem, please refer to the openpi project or file an issue for us.
+
 Please clone this project first.
-Then follow the Installation section of the original 
-[README](https://github.com/Physical-Intelligence/openpi?tab=readme-ov-file#installation) to build the first virtual environment (venv) for 
-running the pretrained checkpoint.
+by
+```bash
+git clone git@github.com:QuanyiLi/pi0-text-latent.git
+git submodule update --init --recursive # pull the libero and third-party library
+````
+
+Then, create a conda environment with python 3.10 and install the dependencies:
+```bash
+conda create -n text-latent python=3.11 -y
+conda activate text-latent
+pip install uv
+cd pi0-text-latent/
+GIT_LFS_SKIP_SMUDGE=1 uv sync
+GIT_LFS_SKIP_SMUDGE=1 uv pip install -e .
+```
+This is the first venv we will use to launch the policy model.
+
+After this, we need to build another environment for the LIBERO benchmark. Please open another terminal and run:
+```bash
+uv venv --python 3.8 examples/libero/.venv
+source examples/libero/.venv/bin/activate
+uv pip sync examples/libero/requirements.txt third_party/libero/requirements.txt --extra-index-url https://download.pytorch.org/whl/cu113 --index-strategy=unsafe-best-match
+```
+
+
+
 After this, build another venev for LIBERO env, following the [official guide](https://github.com/Physical-Intelligence/openpi/tree/main/examples/libero).
 
 It is also required to pull the files containing text-latent from [hugging-face](https://huggingface.co/datasets/Shady0057/pi0-text-latent).
