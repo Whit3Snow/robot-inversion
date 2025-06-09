@@ -590,7 +590,7 @@ def run_reconstruction_exp():
 
 def run_extrapolation_exp():
     logging.basicConfig(level=logging.INFO)
-    for task_suite in ["libero_spatial_ood", "libero_goal_ood"]:
+    for task_suite in ["libero_goal_ood", "libero_spatial_ood"]:
         # TLI
         args = Args()
         args.task_suite_name = task_suite

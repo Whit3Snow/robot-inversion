@@ -74,7 +74,7 @@ python examples/libero/main.py
 ```
 
 This will by default run the extrapolation experiments, while this script actually prepared all experiments in the
-paper.
+paper. The videos will be saved to ```pi0-text-latent/data/libero/```
 You can go to this script and config what experiments you would like to run.
 **Note:** if you have another libero env installed, you need to edit the ```~/.libero/config.yaml``` file to point to
 the correct path of the `libero` package and assets.
