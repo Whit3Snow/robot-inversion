@@ -1,5 +1,4 @@
-This is the official implementation of the paper: **Task Reconstruction and Extrapolation for $\pi_0$ using Text Latent
-**
+This is the official implementation of the paper: **Task Reconstruction and Extrapolation for $\pi_0$ using Text Latent**
 
 [[Arxiv](https://arxiv.org/pdf/2505.03500)]
 
@@ -84,6 +83,7 @@ the correct path of the `libero` package and assets.
 For the text latent identification, we provide a script to run it at `scripts/text_latent.py`.
 It will launch the model and run it on the libero-dataset to record the model's hidden states.
 You don't need to setup the dataset explicitly, as the script will download the dataset automatically.
+The script takes around 1 hour to run on a single RTX4090 GPU.
 
 ## Changes to LIBERO benchmark
 
