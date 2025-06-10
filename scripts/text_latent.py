@@ -152,9 +152,10 @@ if __name__ == '__main__':
         file_id = "{}/pi0/avg_states_{}_{}_frame_{}_{}.pkl".format(EXP_DATA_PATH, *task_range, start, end)
         with open(file_id, "wb") as f:
             pickle.dump(dict(hidden_states_avg=hidden_states_avg,
-                             post_attn_avg=post_attn_avg,
-                             post_attn_embedding_avg=post_attn_embedding_avg,
-                             text_token_head_output_avg=text_token_head_output_avg,
+                             # save disk space
+                             # post_attn_avg=post_attn_avg,
+                             # post_attn_embedding_avg=post_attn_embedding_avg,
+                             # text_token_head_output_avg=text_token_head_output_avg,
                              last_obs=obs,
                              frame_index_to_use=frame_index_to_use,
                              task_range=task_range,
