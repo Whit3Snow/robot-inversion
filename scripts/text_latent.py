@@ -58,7 +58,7 @@ def create_dataloader(train_config, data_config, ckpt_dir, task_range, batch_siz
     delta_time = {key: [t / dataset_meta.fps for t in range(train_config.model.action_horizon)]
                   for key in data_config.action_sequence_keys}
     dataset = lerobot_dataset.LeRobotDataset(data_config.repo_id, delta_timestamps=delta_time,
-                                             local_files_only=data_config.local_files_only,
+                                             local_files_only=False,
                                              episodes=episode_to_use)
     assert data_config.norm_stats is None, "we will overwrite the norm stats with the training one"
     dataset = TransformedDataset(dataset, [
