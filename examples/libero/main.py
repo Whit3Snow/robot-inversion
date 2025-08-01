@@ -3,13 +3,14 @@ import dataclasses
 import json
 import logging
 import math
+import os.path
 import os.path as osp
 import pathlib
 import pickle
 import random
 import types
 from datetime import datetime
-
+from openpi import SRC_PATH
 import cv2
 import imageio
 import matplotlib.pyplot as plt
@@ -56,6 +57,7 @@ class Args:
     #################################################################################################################
     # Layer to intervene, 0 to do text embedding interpolation (TEI), "all" for interpolating hidden states (TLI),
     # Other integers for specific layer interpolation. None for turning it off.
+    switch_prompt=False
     layer_to_intervene = "all"
     use_TEI_and_TLI = False
     mask_prompt_method = None  # options: None, "blank", "mask", "blank_with_text_latent"
@@ -64,7 +66,7 @@ class Args:
     use_only_two_prompt_for_libero_object = False
     seed: int = 7  # Random Seed (for reproducibility)
 
-
+switch_prompt_file = os.path.join(SRC_PATH, "mapping.json")
 libero_object_center_prompt = "pick up the cream cheese and place it in the basket"
 libero_object_top_right_prompt = "pick up the alphabet soup and place it in the basket"
 task_using_center_prompt = [1, 3, 9, 2, 5]
@@ -620,4 +622,5 @@ def run_extrapolation_exp():
 
 if __name__ == "__main__":
     # run_reconstruction_exp()
-    run_extrapolation_exp()
+    # run_extrapolation_exp()
+    eval_libero(Args())
