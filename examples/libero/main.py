@@ -57,7 +57,7 @@ class Args:
     #################################################################################################################
     # Layer to intervene, 0 to do text embedding interpolation (TEI), "all" for interpolating hidden states (TLI),
     # Other integers for specific layer interpolation. None for turning it off.
-    switch_prompt=False
+    switch_prompt = False
     layer_to_intervene = "all"
     use_TEI_and_TLI = False
     mask_prompt_method = None  # options: None, "blank", "mask", "blank_with_text_latent"
@@ -66,6 +66,8 @@ class Args:
     use_only_two_prompt_for_libero_object = False
     seed: int = 7  # Random Seed (for reproducibility)
 
+
+switch_step = 12 * 5 + 10 / 2  # make it same as the interpolation step = 24 /2 * action chunking + steps to wait
 switch_prompt_file = os.path.join(SRC_PATH, "mapping.json")
 libero_object_center_prompt = "pick up the cream cheese and place it in the basket"
 libero_object_top_right_prompt = "pick up the alphabet soup and place it in the basket"
@@ -281,6 +283,14 @@ def render(self, width, height, camera_id=None, segmentation=False):
 
 
 def eval_libero(args: Args) -> None:
+    prompts_to_switch = {}
+    if args.switch_prompt:
+        assert args.layer_to_intervene is not None
+        with open(switch_prompt_file, "r") as f:
+            data = json.load(f)
+        for item in data[args.task_suite_name]:
+            prompts_to_switch[item[0]] = item[1:]
+
     if args.use_only_two_prompt_for_libero_object:
         assert args.task_suite_name == "libero_object"
         assert args.layer_to_intervene is None
@@ -429,6 +439,15 @@ def eval_libero(args: Args) -> None:
                                 element["prompt"] = libero_object_top_right_prompt
                             if reset_sever:
                                 print(f"replace object prompt with {element['prompt']}")
+
+                        if args.switch_prompt:
+                            if t < switch_step:
+                                element["prompt"] = prompts_to_switch[task_description][0]
+                            else:
+                                element["prompt"] = prompts_to_switch[task_description][1]
+                            if t == 11:
+                                print("Use prompt: \n{}\n{}".format(prompts_to_switch[task_description][0],
+                                                                    prompts_to_switch[task_description][1]))
 
                         if args.obscure_prompt:
                             if args.obscure_prompt_layer is None:
@@ -622,5 +641,5 @@ def run_extrapolation_exp():
 
 if __name__ == "__main__":
     # run_reconstruction_exp()
-    # run_extrapolation_exp()
-    eval_libero(Args())
+    run_extrapolation_exp()
+    # eval_libero(Args())
