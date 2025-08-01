@@ -1,0 +1,26 @@
+{
+    "libero_goal_ood": [
+        ["put the cream cheese in the basket", "put the cream cheese in the bowl", "put the bowl on the stove"],
+        ["put the orange juice on the stove", "put the wine bottle on top of the cabinet", "put the bowl on the stove"],
+        ["put the bbq source on the plate", "put the cream cheese in the bowl", "put the bowl on the plate"],
+        ["put the tomato sauce on top of the cabinet", "put the cream cheese in the bowl", "put the bowl on top of the cabinet"],
+        ["put the wine bottle on the stove", "put the wine bottle on top of the cabinet", "put the bowl on the stove"],
+        ["put the wine bottle on the plate",  "put the wine bottle on top of the cabinet", "put the bowl on the plate"],
+        ["put the wine bottle in the bowl",  "put the wine bottle on top of the cabinet", "put the cream cheese in the bowl"],
+        ["put the cream cheese on the plate", "put the cream cheese in the bowl", "put the bowl on the plate"],
+        ["put the cream cheese on the stove", "put the cream cheese in the bowl", "put the bowl on the stove"],
+        ["put the cream cheese on top of the cabinet", "put the cream cheese in the bowl", "put the bowl on top of the cabinet"]
+        ],
+    "libero_spatial_ood": [
+        ["put the butter on the plate", "put the cream cheese in the bowl", "pick up the black bowl on the cookie box and place it on the plate"],
+        ["put the chocolate pudding on the plate", "put the cream cheese in the bowl", "pick up the black bowl on the cookie box and place it on the plate"],
+        ["put the milk on the plate", "put the wine bottle on top of the cabinet", "pick up the black bowl on the ramekin and place it on the plate"],
+        ["put the orange juice on the plate","put the wine bottle on top of the cabinet", "pick up the black bowl on the ramekin and place it on the plate"],
+        ["put the bowl on cookie box on the stove", "pick up the black bowl on the cookie box and place it on the plate", "put the bowl on the stove"],
+        ["put the bowl on cookie box on the cabinet", "pick up the black bowl on the cookie box and place it on the plate", "put the bowl on top of the cabinet"],
+        ["put the bowl next to the plate on the cabinet", "pick up the black bowl next to the plate and place it on the plate", "put the bowl on top of the cabinet"],
+        ["put the bowl next to the plate on the stove", "pick up the black bowl next to the plate and place it on the plate", "put the bowl on the stove"],
+        ["put the bowl at table center on the cabinet", "pick up the black bowl from table center and place it on the plate", "put the bowl on top of the cabinet"],
+        ["put the bowl at table center on the stove",  "pick up the black bowl from table center and place it on the plate", "put the bowl on the stove"]
+        ]
+}
