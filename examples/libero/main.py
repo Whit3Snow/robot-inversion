@@ -284,7 +284,7 @@ def render(self, width, height, camera_id=None, segmentation=False):
 def eval_libero(args: Args) -> None:
     prompts_to_switch = {}
     if args.switch_prompt:
-        assert args.layer_to_intervene is not None
+        assert args.layer_to_intervene is None
         with open(switch_prompt_file, "r") as f:
             data = json.load(f)
         for item in data[args.task_suite_name]:
