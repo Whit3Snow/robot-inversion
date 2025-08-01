@@ -10,7 +10,6 @@ import pickle
 import random
 import types
 from datetime import datetime
-from openpi import SRC_PATH
 import cv2
 import imageio
 import matplotlib.pyplot as plt
@@ -68,7 +67,7 @@ class Args:
 
 
 switch_step = 12 * 5 + 10 / 2  # make it same as the interpolation step = 24 /2 * action chunking + steps to wait
-switch_prompt_file = os.path.join(SRC_PATH, "mapping.json")
+switch_prompt_file = os.path.join(os.path.dirname(__file__), "mapping.json")
 libero_object_center_prompt = "pick up the cream cheese and place it in the basket"
 libero_object_top_right_prompt = "pick up the alphabet soup and place it in the basket"
 task_using_center_prompt = [1, 3, 9, 2, 5]
