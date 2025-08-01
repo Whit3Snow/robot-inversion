@@ -66,7 +66,7 @@ class Args:
     seed: int = 7  # Random Seed (for reproducibility)
 
 
-switch_step = 12 * 5 + 10 / 2  # make it same as the interpolation step = 24 /2 * action chunking + steps to wait
+switch_step = 12 * 5
 switch_prompt_file = os.path.join(os.path.dirname(__file__), "mapping.json")
 libero_object_center_prompt = "pick up the cream cheese and place it in the basket"
 libero_object_top_right_prompt = "pick up the alphabet soup and place it in the basket"
@@ -444,7 +444,7 @@ def eval_libero(args: Args) -> None:
                                 element["prompt"] = prompts_to_switch[task_description][0]
                             else:
                                 element["prompt"] = prompts_to_switch[task_description][1]
-                            if t == 11:
+                            if t == switch_step:
                                 print("Use prompt: \n{}\n{}".format(prompts_to_switch[task_description][0],
                                                                     prompts_to_switch[task_description][1]))
 
@@ -641,4 +641,6 @@ def run_extrapolation_exp():
 if __name__ == "__main__":
     # run_reconstruction_exp()
     run_extrapolation_exp()
+
+    # logging.basicConfig(level=logging.INFO)
     # eval_libero(Args())
