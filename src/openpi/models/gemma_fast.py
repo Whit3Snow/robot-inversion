@@ -266,7 +266,7 @@ class Block(nn.Module):
         attn_output += x
         residual = attn_output
         attn_output = self.pre_ffw_norm(attn_output)
-        outputs = self.mlp(attn_output)
+        outputs, _ = self.mlp(attn_output)
         outputs = self.drop(outputs, deterministic)
         outputs = residual + outputs
         return outputs, kv_cache
