@@ -14,7 +14,7 @@ from openpi.serving import websocket_policy_server
 from openpi import transforms as _transforms
 from openpi.models import model as _model
 
-from scripts.action_inversion import (
+from action_inversion import (
     invert_actions_to_noise,
     reconstruct_from_noise,
 )
