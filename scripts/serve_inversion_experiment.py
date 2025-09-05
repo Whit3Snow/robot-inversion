@@ -11,13 +11,7 @@ import tyro
 from openpi.policies import policy_config as _policy_config
 from openpi.training import config as _config
 from openpi.serving import websocket_policy_server
-from openpi import transforms as _transforms
 from openpi.models import model as _model
-
-from action_inversion import (
-    invert_actions_to_noise,
-    reconstruct_from_noise,
-)
 
 
 @dataclasses.dataclass
@@ -97,7 +91,9 @@ class InversionExperimentPolicy:
 
         # Sample original actions using the model directly
         self._rng, sample_rng = jax.random.split(self._rng)
-        raw_original_actions, _ = self._model.sample_actions(sample_rng, observation, num_steps=self._num_steps)
+        raw_original_actions, _ = self._policy._sample_actions(
+            sample_rng, observation, num_steps=self._num_steps
+        )
 
         if self._verbose:
             print(f"🔍 Raw model output shape: {raw_original_actions.shape}")
@@ -115,8 +111,8 @@ class InversionExperimentPolicy:
 
         # For inversion experiment, we need to work with the raw model actions
         # Invert to noise and reconstruct using the RAW 32D actions
-        inverted_noise, _ = invert_actions_to_noise(
-            self._model, observation, raw_original_actions, num_steps=self._num_steps
+        inverted_noise, _ = self._policy._invert_actions(
+            observation, raw_original_actions, num_steps=self._num_steps
         )
         
         # 🔥 Reconstruct from noise with potentially different prompt
@@ -124,8 +120,8 @@ class InversionExperimentPolicy:
         # reconstruction_observation = self._modify_observation_prompt(observation, "put the object in the drawer")
         reconstruction_observation = observation  # Use original prompt by default
         
-        raw_reconstructed_actions, _ = reconstruct_from_noise(
-            self._model, reconstruction_observation, inverted_noise, num_steps=self._num_steps
+        raw_reconstructed_actions, _ = self._policy._reconstruct_from_noise(
+            reconstruction_observation, inverted_noise, num_steps=self._num_steps
         )
 
         # Apply output transforms to reconstructed actions to get comparable 7D commands
