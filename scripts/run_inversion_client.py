@@ -23,6 +23,85 @@ except Exception:  # pragma: no cover
     tqdm = None  # fallback: no progress bars
 
 
+# ------------------------------
+# Visualization helpers (shared)
+# ------------------------------
+def _compute_color_list(num_steps: int) -> List[tp.Tuple[float, float, float, float]]:
+    if num_steps <= 0:
+        return []
+    try:
+        import matplotlib.pyplot as plt  # type: ignore
+
+        cmap = plt.get_cmap("viridis")
+        points = np.linspace(0, 1, num_steps)
+        return [cmap(p) for p in points]
+    except Exception:
+        return [(0.2 + 0.8 * i / max(1, num_steps), 0.1, 0.9 - 0.8 * i / max(1, num_steps), 1.0) for i in range(num_steps)]
+
+
+def _add_marker_to_scene(render_context, marker_params: List[dict]) -> None:
+    if render_context.scn.ngeom >= render_context.scn.maxgeom:
+        return
+    for param in marker_params:
+        g = render_context.scn.geoms[render_context.scn.ngeom]
+        g.dataid = -1
+        g.objtype = 0
+        g.objid = -1
+        g.category = 4
+        g.emission = 0.5
+        g.specular = 0
+        g.shininess = 0.0
+        g.transparent = 0
+        g.reflectance = 0
+        g.label = ""
+        g.type = 2
+        g.size[:] = np.array([0.008, 0.008, 0.008])
+        g.mat[:] = np.eye(3)
+        g.matid = -1
+        g.pos[:] = param["pos"]
+        g.rgba[:] = param["rgba"]
+        render_context.scn.ngeom += 1
+
+
+def _get_render_with_markers(marker_params: List[dict]):
+    import mujoco  # lazy import
+
+    def render(self, width, height, camera_id=None, segmentation=False):
+        viewport = mujoco.MjrRect(0, 0, width, height)
+        if width > self.con.offWidth or height > self.con.offHeight:
+            new_width = max(width, self.model.vis.global_.offwidth)
+            new_height = max(height, self.model.vis.global_.offheight)
+            self.update_offscreen_size(new_width, new_height)
+        if camera_id is not None:
+            if camera_id == -1:
+                self.cam.type = mujoco.mjtCamera.mjCAMERA_FREE
+            else:
+                self.cam.type = mujoco.mjtCamera.mjCAMERA_FIXED
+            self.cam.fixedcamid = camera_id
+        mujoco.mjv_updateScene(
+            self.model._model,
+            self.data._data,
+            self.vopt,
+            self.pert,
+            self.cam,
+            mujoco.mjtCatBit.mjCAT_ALL,
+            self.scn,
+        )
+        _add_marker_to_scene(self, marker_params)
+        mujoco.mjr_render(viewport=viewport, scn=self.scn, con=self.con)
+
+    return render
+
+
+def _patch_offscreen_render_with_markers(env, marker_params: List[dict]) -> None:
+    import types as _types
+
+    render = _get_render_with_markers(marker_params)
+    env.env.sim._render_context_offscreen.render = _types.MethodType(
+        render, env.env.sim._render_context_offscreen
+    )
+
+
 @dataclasses.dataclass
 class Args:
     host: str = "0.0.0.0"
@@ -176,64 +255,8 @@ def _rollout_and_record(
     from libero.libero.envs import OffScreenRenderEnv  # type: ignore
     import mujoco
 
-    # Setup color palette for trajectory visualization (from main.py)
-    if draw_traj:
-        try:
-            import matplotlib.pyplot as plt
-            cmap = plt.get_cmap('viridis')
-            steps = len(actions_7d) if max_steps is None else min(max_steps, len(actions_7d))
-            points = np.linspace(0, 1, steps)
-            color_list = [cmap(p) for p in points]
-        except ImportError:
-            # Fallback colors if matplotlib not available
-            steps = len(actions_7d) if max_steps is None else min(max_steps, len(actions_7d))
-            color_list = [(0.2 + 0.8 * t / steps, 0.1, 0.9 - 0.8 * t / steps, 1.0) for t in range(steps)]
-    else:
-        color_list = []
-
-    # Small helper copied from examples/libero/main.py to add markers
+    # Color palette and marker params
     marker_params: List[dict] = []
-
-    def add_marker_to_scene(render_context, marker_params):
-        if render_context.scn.ngeom >= render_context.scn.maxgeom:
-            return
-        for param in marker_params:
-            g = render_context.scn.geoms[render_context.scn.ngeom]
-            g.dataid = -1
-            g.objtype = 0
-            g.objid = -1
-            g.category = 4
-            g.emission = 0.5
-            g.specular = 0
-            g.shininess = 0.0
-            g.transparent = 0
-            g.reflectance = 0
-            g.label = ""
-            g.type = 2
-            g.size[:] = np.array([0.008, 0.008, 0.008])
-            g.mat[:] = np.eye(3)
-            g.matid = -1
-            g.pos[:] = param["pos"]
-            g.rgba[:] = param["rgba"]
-            render_context.scn.ngeom += 1
-
-    def render(self, width, height, camera_id=None, segmentation=False):
-        viewport = mujoco.MjrRect(0, 0, width, height)
-        if width > self.con.offWidth or height > self.con.offHeight:
-            new_width = max(width, self.model.vis.global_.offwidth)
-            new_height = max(height, self.model.vis.global_.offheight)
-            self.update_offscreen_size(new_width, new_height)
-        if camera_id is not None:
-            if camera_id == -1:
-                self.cam.type = mujoco.mjtCamera.mjCAMERA_FREE
-            else:
-                self.cam.type = mujoco.mjtCamera.mjCAMERA_FIXED
-            self.cam.fixedcamid = camera_id
-        mujoco.mjv_updateScene(
-            self.model._model, self.data._data, self.vopt, self.pert, self.cam, mujoco.mjtCatBit.mjCAT_ALL, self.scn
-        )
-        add_marker_to_scene(self, marker_params)
-        mujoco.mjr_render(viewport=viewport, scn=self.scn, con=self.con)
 
     # Build task and env
     print(f"      Creating task environment...")
@@ -246,7 +269,8 @@ def _rollout_and_record(
 
     print(f"      Resetting and stabilizing...")
     obs = env.reset()
-    env.env.sim._render_context_offscreen.render = types.MethodType(render, env.env.sim._render_context_offscreen)
+    if draw_traj:
+        _patch_offscreen_render_with_markers(env, marker_params)
 
     # Stabilize
     LIBERO_DUMMY_ACTION = [0.0] * 6 + [-1.0]
@@ -256,6 +280,7 @@ def _rollout_and_record(
     frames_agent: List[np.ndarray] = []
     frames_wrist: List[np.ndarray] = []
     steps = len(actions_7d) if max_steps is None else min(max_steps, len(actions_7d))
+    color_list = _compute_color_list(steps) if draw_traj else []
     
     print(f"      Rolling out {steps} action steps...")
     for t in range(steps):
@@ -301,7 +326,8 @@ def _default_max_steps_for_suite(task_suite_name: str) -> int:
 
 def run_closed_loop_episode(
     *, host: str, port: int, task_suite_name: str, task_id: int, prompt: str, resize_size: int, seed: int,
-    replan_steps: int, max_steps: Optional[int], use_reconstructed_for_control: bool, desc: str = "episode",
+    replan_steps: int, max_steps: Optional[int], use_reconstructed_for_control: bool, draw_traj: bool = False,
+    desc: str = "episode",
 ) -> Tuple[List[np.ndarray], List[np.ndarray], List[float], bool]:
     """Closed-loop rollout with periodic replanning.
 
@@ -336,6 +362,14 @@ def run_closed_loop_episode(
     done = False
     t = 0
     max_steps = max_steps or _default_max_steps_for_suite(task_suite_name)
+    
+    # Setup trajectory visualization (color palette + render patch) if enabled
+    marker_params: List[dict] = []
+    if draw_traj:
+        color_list = _compute_color_list(max_steps)
+        _patch_offscreen_render_with_markers(env, marker_params)
+    else:
+        color_list = []
     total_replans = math.ceil(max_steps / max(1, replan_steps))
 
     # progress bars (if tqdm is available)
@@ -366,6 +400,11 @@ def run_closed_loop_episode(
         wrist_img = np.ascontiguousarray(obs["robot0_eye_in_hand_image"][::-1, ::-1])
         frames_agent.append(agent_img)
         frames_wrist.append(wrist_img)
+
+        # Add a trajectory marker for the executed step (only valid executed path)
+        if draw_traj:
+            color = color_list[min(t, len(color_list) - 1)] if len(color_list) > 0 else (0.0, 1.0, 0.0, 1.0)
+            marker_params.append(dict(pos=obs["robot0_eef_pos"], rgba=np.array(color)))
 
         # Step one action
         action = action_queue.pop(0)
@@ -518,6 +557,7 @@ def main(args: Args) -> None:
             replan_steps=args.replan_steps,
             max_steps=args.max_steps,
             use_reconstructed_for_control=False,
+            draw_traj=args.draw_traj,
             desc="orig",
         )
         # Episode with reconstructed actions per chunk
@@ -532,6 +572,7 @@ def main(args: Args) -> None:
             replan_steps=args.replan_steps,
             max_steps=args.max_steps,
             use_reconstructed_for_control=True,
+            draw_traj=args.draw_traj,
             desc="recon",
         )
 
