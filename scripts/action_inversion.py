@@ -15,97 +15,15 @@ import numpy as np
 import argparse
 import pickle
 from pathlib import Path
-from typing import Dict, Any, Tuple
+from typing import Dict, Any
 
 from openpi.training import config
 from openpi.policies import policy_config
 from openpi.shared import download
 from openpi.models import model as _model
-from openpi.models.pi0 import make_attn_mask
 from openpi import transforms as _transforms
-import einops
 
 import math
-
-
-def invert_actions_to_noise(
-    model: "Pi0",
-    observation: _model.Observation,
-    actions: jax.Array,
-    *,
-    num_steps: int = 10,
-    mlp_activation=None,
-    hidden_states_to_add=None,
-) -> Tuple[jax.Array, Any]:
-    """
-    Invert actions to noise using rectified flow inversion.
-    
-    This is the reverse process of sample_actions: given actions (x_0), 
-    we integrate backwards from t=0 to t=1 to recover the initial noise.
-    
-    Args:
-        model: Pi0 model instance
-        observation: observation for context
-        actions: target actions to invert [batch_size, action_horizon, action_dim]
-        num_steps: number of integration steps
-        mlp_activation: optional MLP activation override
-        hidden_states_to_add: optional hidden states for intervention
-        
-    Returns:
-        inverted_noise: recovered noise [batch_size, action_horizon, action_dim]
-        layer_output: layer outputs for analysis
-    """
-    observation = _model.preprocess_observation(None, observation, train=False)
-    
-    # Inversion: dt is positive, going from t=0 (actions) to t=1 (noise)
-    dt = 1.0 / num_steps
-    batch_size = observation.state.shape[0]
-    
-    # Start from actions at t=0
-    x_t = actions
-    time = 0.0
-    
-    # Encode prefix once and cache
-    prefix_tokens, prefix_mask, prefix_ar_mask = model.embed_prefix(observation)
-    prefix_attn_mask = make_attn_mask(prefix_mask, prefix_ar_mask)
-    positions = jnp.cumsum(prefix_mask, axis=1) - 1
-    kv_cache, layer_output = model._encode(
-        mlp_activation, prefix_tokens, prefix_attn_mask, positions,
-        hidden_states_to_add=hidden_states_to_add
-    )
-    
-    def inversion_step(carry):
-        x_t, time = carry
-        
-        # Embed suffix with current x_t and time
-        time_batched = jnp.full((batch_size,), time)
-        suffix_tokens, suffix_mask, suffix_ar_mask = model.embed_suffix(
-            observation, x_t, time_batched
-        )
-        
-        # Create attention masks
-        suffix_attn_mask = make_attn_mask(suffix_mask, suffix_ar_mask)
-        prefix_attn_mask = einops.repeat(prefix_mask, "b p -> b s p", s=suffix_tokens.shape[1])
-        full_attn_mask = jnp.concatenate([prefix_attn_mask, suffix_attn_mask], axis=-1)
-        
-        # Compute positions
-        positions = jnp.sum(prefix_mask, axis=-1)[:, None] + jnp.cumsum(suffix_mask, axis=-1) - 1
-        
-        # Forward through model to get vector field v_t
-        (prefix_out, suffix_out), _, _ = model.PaliGemma.llm(
-            [None, suffix_tokens], mask=full_attn_mask, positions=positions, kv_cache=kv_cache,
-        )
-        assert prefix_out is None
-        v_t = model.action_out_proj(suffix_out[:, -model.action_horizon:])
-        
-        # Inversion update: x_t += dt * v_t (going backwards in rectified flow)
-        return x_t + dt * v_t, time + dt
-    
-    # Integration loop: t=0 -> t=1
-    while time <= 1.0 - dt / 2:
-        x_t, time = inversion_step((x_t, time))
-    
-    return x_t, layer_output
 
 
 def compute_reconstruction_loss(original_actions: jax.Array, reconstructed_actions: jax.Array) -> float:
@@ -177,17 +95,17 @@ def run_libero_prompt_experiment(
     
     # Step 1: Generate original actions
     rng = jax.random.PRNGKey(42)
-    rng_sample, rng_invert, rng_reconstruct = jax.random.split(rng, 3)
-    
-    original_actions, original_layer_output = policy._model.sample_actions(
+    rng_sample, _ = jax.random.split(rng)
+
+    original_actions, original_layer_output = policy._sample_actions(
         rng_sample, observation, num_steps=num_steps
     )
     print(f"Original actions shape: {original_actions.shape}")
     
     # Step 2: Invert actions to noise
     print("Inverting actions to noise...")
-    inverted_noise, invert_layer_output = invert_actions_to_noise(
-        policy._model, observation, original_actions, num_steps=num_steps
+    inverted_noise, invert_layer_output = policy._invert_actions(
+        observation, original_actions, num_steps=num_steps
     )
     print(f"Inverted noise shape: {inverted_noise.shape}")
     
@@ -195,8 +113,8 @@ def run_libero_prompt_experiment(
     print("Reconstructing actions from inverted noise...")
     # We need to manually set the initial noise in sample_actions
     # Since sample_actions generates its own noise, we'll implement custom reconstruction
-    reconstructed_actions, reconstruct_layer_output = reconstruct_from_noise(
-        policy._model, observation, inverted_noise, num_steps=num_steps
+    reconstructed_actions, reconstruct_layer_output = policy._reconstruct_from_noise(
+        observation, inverted_noise, num_steps=num_steps
     )
     print(f"Reconstructed actions shape: {reconstructed_actions.shape}")
     
@@ -234,63 +152,8 @@ def run_libero_prompt_experiment(
     return results
 
 
-def reconstruct_from_noise(
-    model: "Pi0",
-    observation: _model.Observation,
-    initial_noise: jax.Array,
-    *,
-    num_steps: int = 10,
-    mlp_activation=None,
-    hidden_states_to_add=None,
-) -> Tuple[jax.Array, Any]:
-    """
-    Reconstruct actions from given initial noise (custom version of sample_actions).
-    """
-    observation = _model.preprocess_observation(None, observation, train=False)
-    dt = -1.0 / num_steps
-    batch_size = observation.state.shape[0]
-    
-    # Use provided noise instead of generating new one
-    noise = initial_noise
-    
-    # Encode prefix
-    prefix_tokens, prefix_mask, prefix_ar_mask = model.embed_prefix(observation)
-    prefix_attn_mask = make_attn_mask(prefix_mask, prefix_ar_mask)
-    positions = jnp.cumsum(prefix_mask, axis=1) - 1
-    kv_cache, layer_output = model._encode(
-        mlp_activation, prefix_tokens, prefix_attn_mask, positions,
-        hidden_states_to_add=hidden_states_to_add
-    )
-    
-    def step(carry):
-        x_t, time = carry
-        time_batched = jnp.full((batch_size,), time)
-        suffix_tokens, suffix_mask, suffix_ar_mask = model.embed_suffix(
-            observation, x_t, time_batched
-        )
-        suffix_attn_mask = make_attn_mask(suffix_mask, suffix_ar_mask)
-        prefix_attn_mask = einops.repeat(prefix_mask, "b p -> b s p", s=suffix_tokens.shape[1])
-        full_attn_mask = jnp.concatenate([prefix_attn_mask, suffix_attn_mask], axis=-1)
-        positions = jnp.sum(prefix_mask, axis=-1)[:, None] + jnp.cumsum(suffix_mask, axis=-1) - 1
-        
-        (prefix_out, suffix_out), _, _ = model.PaliGemma.llm(
-            [None, suffix_tokens], mask=full_attn_mask, positions=positions, kv_cache=kv_cache,
-        )
-        assert prefix_out is None
-        v_t = model.action_out_proj(suffix_out[:, -model.action_horizon:])
-        
-        return x_t + dt * v_t, time + dt
-    
-    # Integration: t=1 -> t=0
-    x_t, time = noise, 1.0
-    while time >= -dt / 2:
-        x_t, time = step((x_t, time))
-    
-    return x_t, layer_output
-
-
 def create_libero_observation(
-    task_suite_name: str = "libero_goal", 
+    task_suite_name: str = "libero_goal",
     task_id: int = 0,
     prompt: str | None = None,
     resize_size: int = 224,

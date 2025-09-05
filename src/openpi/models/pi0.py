@@ -6,6 +6,7 @@ import flax.nnx as nnx
 import flax.nnx.bridge as nnx_bridge
 import jax
 import jax.numpy as jnp
+from typing import Any
 from typing_extensions import override
 
 import openpi.models.gemma as _gemma
@@ -411,3 +412,101 @@ class Pi0(_model.BaseModel):
 
         # x_0, _ = jax.lax.while_loop(cond, step, (noise, 1.0))
         return x_t, layer_output
+
+    def invert_actions(
+            self,
+            observation: _model.Observation,
+            actions: jax.Array,
+            *,
+            num_steps: int = 10,
+            mlp_activation=None,
+            hidden_states_to_add=None,
+    ) -> tuple[jax.Array, Any]:
+        """Invert actions to recover the initial noise via rectified flow."""
+        observation = _model.preprocess_observation(None, observation, train=False)
+        dt = 1.0 / num_steps
+        batch_size = observation.state.shape[0]
+
+        prefix_tokens, prefix_mask, prefix_ar_mask = self.embed_prefix(observation)
+        prefix_attn_mask = make_attn_mask(prefix_mask, prefix_ar_mask)
+        positions = jnp.cumsum(prefix_mask, axis=1) - 1
+        kv_cache, layer_output = self._encode(
+            mlp_activation, prefix_tokens, prefix_attn_mask, positions,
+            hidden_states_to_add=hidden_states_to_add,
+        )
+
+        def body(i, x_t):
+            time = i * dt
+            time_batched = jnp.full((batch_size,), time)
+            suffix_tokens, suffix_mask, suffix_ar_mask = self.embed_suffix(
+                observation, x_t, time_batched,
+            )
+            suffix_attn_mask = make_attn_mask(suffix_mask, suffix_ar_mask)
+            prefix_attn_mask_rep = einops.repeat(
+                prefix_mask, "b p -> b s p", s=suffix_tokens.shape[1]
+            )
+            full_attn_mask = jnp.concatenate(
+                [prefix_attn_mask_rep, suffix_attn_mask], axis=-1
+            )
+            positions = jnp.sum(prefix_mask, axis=-1)[:, None] + jnp.cumsum(
+                suffix_mask, axis=-1
+            ) - 1
+            (prefix_out, suffix_out), _, _ = self.PaliGemma.llm(
+                [None, suffix_tokens], mask=full_attn_mask,
+                positions=positions, kv_cache=kv_cache,
+            )
+            assert prefix_out is None
+            v_t = self.action_out_proj(suffix_out[:, -self.action_horizon:])
+            return x_t + dt * v_t
+
+        inverted = jax.lax.fori_loop(0, num_steps, body, actions)
+        return inverted, layer_output
+
+    def reconstruct_from_noise(
+            self,
+            observation: _model.Observation,
+            initial_noise: jax.Array,
+            *,
+            num_steps: int = 10,
+            mlp_activation=None,
+            hidden_states_to_add=None,
+    ) -> tuple[jax.Array, Any]:
+        """Reconstruct actions from given initial noise."""
+        observation = _model.preprocess_observation(None, observation, train=False)
+        dt = -1.0 / num_steps
+        batch_size = observation.state.shape[0]
+
+        prefix_tokens, prefix_mask, prefix_ar_mask = self.embed_prefix(observation)
+        prefix_attn_mask = make_attn_mask(prefix_mask, prefix_ar_mask)
+        positions = jnp.cumsum(prefix_mask, axis=1) - 1
+        kv_cache, layer_output = self._encode(
+            mlp_activation, prefix_tokens, prefix_attn_mask, positions,
+            hidden_states_to_add=hidden_states_to_add,
+        )
+
+        def body(i, x_t):
+            time = 1.0 + i * dt
+            time_batched = jnp.full((batch_size,), time)
+            suffix_tokens, suffix_mask, suffix_ar_mask = self.embed_suffix(
+                observation, x_t, time_batched,
+            )
+            suffix_attn_mask = make_attn_mask(suffix_mask, suffix_ar_mask)
+            prefix_attn_mask_rep = einops.repeat(
+                prefix_mask, "b p -> b s p", s=suffix_tokens.shape[1]
+            )
+            full_attn_mask = jnp.concatenate(
+                [prefix_attn_mask_rep, suffix_attn_mask], axis=-1
+            )
+            positions = jnp.sum(prefix_mask, axis=-1)[:, None] + jnp.cumsum(
+                suffix_mask, axis=-1
+            ) - 1
+            (prefix_out, suffix_out), _, _ = self.PaliGemma.llm(
+                [None, suffix_tokens], mask=full_attn_mask,
+                positions=positions, kv_cache=kv_cache,
+            )
+            assert prefix_out is None
+            v_t = self.action_out_proj(suffix_out[:, -self.action_horizon:])
+            return x_t + dt * v_t
+
+        reconstructed = jax.lax.fori_loop(0, num_steps, body, initial_noise)
+        return reconstructed, layer_output

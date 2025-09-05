@@ -91,6 +91,8 @@ class Policy(BasePolicy):
         self._model = model
         # self._sample_actions = model.sample_actions # stop jit for debugging
         self._sample_actions = nnx_utils.module_jit(model.sample_actions)
+        self._invert_actions = nnx_utils.module_jit(model.invert_actions)
+        self._reconstruct_from_noise = nnx_utils.module_jit(model.reconstruct_from_noise)
         self._input_transform = _transforms.compose(transforms)
         self._output_transform = _transforms.compose(output_transforms)
         self._rng = rng or jax.random.key(0)
