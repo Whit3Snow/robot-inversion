@@ -87,6 +87,8 @@ class Policy(BasePolicy):
             sample_kwargs: dict[str, Any] | None = None,
             metadata: dict[str, Any] | None = None,
     ):
+        # Expose model for advanced use (e.g., inversion experiments)
+        self._model = model
         # self._sample_actions = model.sample_actions # stop jit for debugging
         self._sample_actions = nnx_utils.module_jit(model.sample_actions)
         self._input_transform = _transforms.compose(transforms)

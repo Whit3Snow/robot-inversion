@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>π0 Rectified Flow Policy — Server/Client & RF Infographic</title>
+  <style>
+    :root {
+      --bg: #0c1116;
+      --panel: #121821;
+      --muted: #9fb0c0;
+      --text: #e6eef5;
+      --accent: #4cc9f0;
+      --accent-2: #b9fbc0;
+      --accent-3: #ffd166;
+      --danger: #ef476f;
+      --ok: #06d6a0;
+      --code: #1a2332;
+      --border: #223044;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font: 14px/1.45 Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      color: var(--text);
+      background: linear-gradient(180deg, #0c1116 0%, #0b0f15 100%);
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    code, .code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      background: var(--code);
+      color: #cfe7ff;
+      padding: 0.15rem 0.35rem;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+    }
+
+    .wrap {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 32px 24px 80px;
+    }
+    .title {
+      font-size: 22px;
+      margin: 0 0 4px 0;
+      letter-spacing: 0.2px;
+    }
+    .subtitle {
+      color: var(--muted);
+      margin: 0 0 24px 0;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 14px;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px 16px 14px;
+      box-shadow: 0 6px 14px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.03);
+    }
+    .panel h2 {
+      margin: 0 0 10px 0;
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: 0.2px;
+    }
+    .panel .hint { color: var(--muted); font-size: 12px; margin-bottom: 10px; }
+    .kvs { color: var(--accent-2); }
+    .rf { color: var(--accent-3); }
+    .warn { color: var(--danger); }
+    .ok { color: var(--ok); }
+
+    .flow {
+      display: grid;
+      grid-template-columns: 1fr 44px 1fr 44px 1fr;
+      gap: 8px;
+      align-items: center;
+    }
+    .box {
+      background: #0f1520;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      min-height: 88px;
+    }
+    .box h3 { margin: 0 0 6px; font-size: 14px; }
+    .box ul { margin: 0; padding-left: 18px; }
+    .box li { margin: 4px 0; color: #d7e6f2; }
+    .arrow { text-align: center; color: var(--muted); font-size: 22px; }
+
+    .two-col {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+    }
+    .kv { display: grid; grid-template-columns: 110px 1fr; gap: 8px; }
+    .kv div:nth-child(odd) { color: var(--muted); }
+    .kv div:nth-child(even) { color: #dfefff; }
+
+    details { background: #0f1520; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+    details > summary { cursor: pointer; color: var(--muted); }
+    details pre { overflow: auto; }
+
+    .footnotes{ color: var(--muted); font-size: 12px; }
+    .pill { display:inline-block; padding:2px 8px; border-radius:999px; border:1px solid var(--border); background:#121a28; color:#dce8f4; font-size:12px; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+
+    @media (max-width: 960px) {
+      .flow { grid-template-columns: 1fr; }
+      .arrow { display: none; }
+      .two-col { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1 class="title">π0 Rectified Flow Policy — Server/Client와 RF 인포그래픽</h1>
+    <p class="subtitle">서버–클라이언트 상호작용, 모델 입/출력 경로, Rectified Flow 학습·샘플링 구조를 한 눈에 파악하기 위한 요약</p>
+
+    <section class="panel" style="grid-column: 1 / -1; margin-bottom: 14px;">
+      <h2>1) 서버 ↔ 클라이언트 상호작용 (WebSocket)</h2>
+      <div class="hint">메시지 포맷: <span class="pill mono">msgpack</span>으로 직렬화된 dict. 클라이언트가 obs 송신 → 서버가 actions 반환.</div>
+      <div class="flow">
+        <div class="box">
+          <h3>클라이언트</h3>
+          <ul>
+            <li>관측 obs(dict) 생성: 이미지 uint8 리사이즈/패딩, 상태, 프롬프트</li>
+            <li>웹소켓 연결 후 <span class="mono">infer(obs)</span> 호출</li>
+            <li>예시: <span class="code">examples/simple_client/main.py</span></li>
+          </ul>
+        </div>
+        <div class="arrow">⟶</div>
+        <div class="box">
+          <h3>서버 핸들러</h3>
+          <ul>
+            <li><span class="mono">websocket_policy_server.py</span>의 <span class="mono">_handler</span></li>
+            <li>obs 수신 → <span class="mono">policy.infer(obs)</span> 호출</li>
+            <li>결과 dict에 <span class="pill">server_timing</span> 추가 후 전송</li>
+          </ul>
+        </div>
+        <div class="arrow">⟶</div>
+        <div class="box">
+          <h3>Policy.infer</h3>
+          <ul>
+            <li>입력 변환: Normalize/Tokenize/Resize</li>
+            <li><span class="mono">Observation.from_dict</span>로 구조화</li>
+            <li><b>샘플링</b>: <span class="mono">model.sample_actions</span> 호출</li>
+          </ul>
+        </div>
+      </div>
+
+      <details style="margin-top:10px;">
+        <summary>관련 경로</summary>
+        <div class="two-col" style="margin-top:10px;">
+          <div class="kv">
+            <div>서버 실행</div><div class="mono">scripts/serve_policy.py</div>
+            <div>웹소켓 서버</div><div class="mono">src/openpi/serving/websocket_policy_server.py</div>
+            <div>클라이언트 예시</div><div class="mono">examples/simple_client/main.py</div>
+          </div>
+          <div class="kv">
+            <div>Policy</div><div class="mono">src/openpi/policies/policy.py: infer()</div>
+            <div>Transforms</div><div class="mono">src/openpi/transforms.py</div>
+            <div>Observation</div><div class="mono">src/openpi/models/model.py</div>
+          </div>
+        </div>
+      </details>
+    </section>
+
+    <section class="grid" style="margin-bottom: 14px;">
+      <div class="panel" style="grid-column: span 12;">
+        <h2>2) π0 모델 입/출력 경로 (토큰화 흐름)</h2>
+        <div class="hint">Prefix: 이미지/텍스트 토큰. Suffix: 상태/액션/시간 토큰. PaliGemma LLM은 Prefix로 KV 캐시를 채우고, Suffix를 디코드.</div>
+        <div class="flow" style="grid-template-columns: 1.2fr 44px 1.2fr 44px 1.3fr;">
+          <div class="box">
+            <h3>입력 (Observation)</h3>
+            <ul>
+              <li>이미지: <span class="mono">base_0_rgb</span>, <span class="mono">left_wrist_0_rgb</span>, <span class="mono">right_wrist_0_rgb</span></li>
+              <li>프롬프트: <span class="mono">tokenized_prompt/mask</span></li>
+              <li>상태: <span class="mono">state</span> (action_dim)</li>
+            </ul>
+          </div>
+          <div class="arrow">⟶</div>
+          <div class="box">
+            <h3>Prefix 임베딩</h3>
+            <ul>
+              <li>이미지 → SigLIP 토큰</li>
+              <li>텍스트 → LLM <span class="mono">embed</span></li>
+              <li>마스크/AR 마스크 생성</li>
+              <li class="mono">embed_prefix()</li>
+            </ul>
+          </div>
+          <div class="arrow">⟶</div>
+          <div class="box">
+            <h3>Suffix 임베딩</h3>
+            <ul>
+              <li>상태 → <span class="mono">state_proj</span></li>
+              <li>액션 x<sub>t</sub> → <span class="mono">action_in_proj</span></li>
+              <li>시간 t → sin/cos 임베딩</li>
+              <li>MLP로 액션·시간 결합</li>
+              <li class="mono">embed_suffix()</li>
+            </ul>
+          </div>
+        </div>
+        <div class="flow" style="margin-top:8px; grid-template-columns: 1fr 44px 1fr;">
+          <div class="box">
+            <h3>LLM 디코딩</h3>
+            <ul>
+              <li>Prefix로 KV 캐시 생성 <span class="kvs">(KV cache)</span></li>
+              <li>Suffix 쿼리 → Prefix+Suffix에 주의</li>
+              <li class="mono">PaliGemma.llm([None, suffix], kv_cache)</li>
+            </ul>
+          </div>
+          <div class="arrow">⟶</div>
+          <div class="box">
+            <h3>출력</h3>
+            <ul>
+              <li>Suffix 출력 → <span class="mono">action_out_proj</span> → <b class="rf">v<sub>t</sub></b></li>
+              <li>샘플링 시: x<sub>t+Δt</sub> 업데이트</li>
+              <li>학습 시: MSE(v<sub>t</sub>, u<sub>t</sub>)</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="grid" style="margin-bottom: 14px;">
+      <div class="panel" style="grid-column: span 6;">
+        <h2>3) Rectified Flow 학습</h2>
+        <ul>
+          <li>노이즈 ε ~ N(0, I), 시간 t ~ Beta(1.5, 1)</li>
+          <li>x<sub>t</sub> = t·ε + (1−t)·x<sub>0</sub>, <span class="mono">u_t = ε − x_0</span></li>
+          <li>모델 출력 v<sub>t</sub>와 u<sub>t</sub>의 MSE 최소화</li>
+        </ul>
+        <details style="margin-top:8px;">
+          <summary>주요 함수 (코드)</summary>
+          <div class="kv" style="margin-top:8px;">
+            <div>손실</div><div class="mono">src/openpi/models/pi0.py:241 (compute_loss)</div>
+            <div>노이즈/시간</div><div class="mono">pi0.py:249, 250</div>
+            <div>x<sub>t</sub>/u<sub>t</sub></div><div class="mono">pi0.py:252, 253</div>
+            <div>LLM 호출</div><div class="mono">pi0.py:262–265</div>
+          </div>
+        </details>
+      </div>
+      <div class="panel" style="grid-column: span 6;">
+        <h2>4) Rectified Flow 샘플링</h2>
+        <ul>
+          <li>초기화: x<sub>1</sub> ~ N(0, I), <span class="mono">dt = −1/num_steps</span></li>
+          <li>루프: v<sub>t</sub> 예측 → x<sub>t+dt</sub> = x<sub>t</sub> + dt·v<sub>t</sub>, t ← t+dt</li>
+          <li>Prefix로 KV 캐시를 한 번만 생성해 효율화</li>
+        </ul>
+        <details style="margin-top:8px;">
+          <summary>주요 함수 (코드)</summary>
+          <div class="kv" style="margin-top:8px;">
+            <div>샘플링</div><div class="mono">src/openpi/models/pi0.py:351 (sample_actions)</div>
+            <div>KV 캐시</div><div class="mono">pi0.py:369–372</div>
+            <div>업데이트</div><div class="mono">pi0.py:402 (x_t += dt * v_t)</div>
+            <div>반환</div><div class="mono">pi0.py:413 (x_0, layer_output)</div>
+          </div>
+        </details>
+      </div>
+    </section>
+
+    <section class="grid" style="margin-bottom: 14px;">
+      <div class="panel" style="grid-column: span 6;">
+        <h2>5) 설정 & 차원 (Config)</h2>
+        <div class="kv">
+          <div>Action dim/horizon</div><div class="mono">32 / 50 (Pi0Config)</div>
+          <div>Max token len</div><div class="mono">48</div>
+          <div>PaliGemma</div><div class="mono">gemma_2b (width=2048, depth=18)</div>
+          <div>Action expert</div><div class="mono">gemma_300m (width=1024, depth=18)</div>
+          <div>Image encoder</div><div class="mono">SigLIP So400m/14, pool=none</div>
+          <div>Time emb period</div><div class="mono">min=4e-3, max=4.0</div>
+          <div>num_steps (기본)</div><div class="mono">10</div>
+        </div>
+        <div class="footnotes" style="margin-top:8px;">설정 위치: <span class="mono">src/openpi/models/pi0.py</span>, <span class="mono">src/openpi/models/gemma.py</span></div>
+      </div>
+      <div class="panel" style="grid-column: span 6;">
+        <h2>6) 개입 포인트 (Interventions)</h2>
+        <ul>
+          <li><b>샘플 스텝</b>: <span class="mono">num_steps</span> (Policy 생성 시 <span class="mono">sample_kwargs</span>로 전달 가능)</li>
+          <li><b>업데이트 수식</b>: <span class="mono">x_t += dt * v_t</span> 근처에서 스케줄/정규화/가이던스 추가</li>
+          <li><b>시간 임베딩</b>: <span class="mono">posemb_sincos(min/max_period)</span> 조정</li>
+          <li><b>텍스트 레이어 개입</b>: <span class="mono">hidden_states_to_add</span> (TEI/TLI) — Prefix 인코딩 시 주입</li>
+        </ul>
+        <details style="margin-top:8px;">
+          <summary>관련 코드 라인</summary>
+          <div class="kv" style="margin-top:8px;">
+            <div>num_steps</div><div class="mono">pi0.py:355</div>
+            <div>업데이트</div><div class="mono">pi0.py:402</div>
+            <div>시간 임베딩</div><div class="mono">pi0.py:223, 49–65</div>
+            <div>히든 주입</div><div class="mono">pi0.py:269–281, gemma.py:515–538</div>
+          </div>
+        </details>
+      </div>
+    </section>
+
+    <section class="panel" style="grid-column: 1 / -1;">
+      <h2>요약</h2>
+      <ul>
+        <li>클라이언트는 obs(dict)를 웹소켓으로 전송하고, 서버가 <span class="mono">policy.infer</span>를 통해 <span class="mono">model.sample_actions</span>를 호출해 action 시퀀스를 반환합니다.</li>
+        <li>Rectified Flow는 v<sub>t</sub>로 벡터장을 학습(MSE), 추론 시 <span class="mono">x_t += dt * v_t</span> 적분으로 액션을 생성합니다.</li>
+        <li>KV 캐시로 Prefix(이미지+텍스트) 컨텍스트는 1회만 인코딩하여 효율화합니다.</li>
+      </ul>
+    </section>
+
+  </div>
+</body>
+<!--
+This page is static and self-contained. Open directly in a browser.
+Repository paths referenced are within: pi0-text-latent/src/openpi/...
+-->
+</html>
+
