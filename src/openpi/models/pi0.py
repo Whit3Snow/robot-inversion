@@ -402,16 +402,18 @@ class Pi0(_model.BaseModel):
 
             return x_t + dt * v_t, time + dt
 
-        # def cond(carry):
-        #     x_t, time = carry
-        #     # robust to floating-point error
-        #     return
-        x_t, time = noise, 1.0
-        while time >= -dt / 2:
-            x_t, time = step((x_t, time))
+        def cond(carry):
+            x_t, time = carry
+            # robust to floating-point error
+            return time >= -dt / 2
+        # x_t, time = noise, 1.0
+        # while time >= -dt / 2:
+        #     x_t, time = step((x_t, time))
 
-        # x_0, _ = jax.lax.while_loop(cond, step, (noise, 1.0))
-        return x_t, layer_output
+        x_0, _ = jax.lax.while_loop(cond, step, (noise, 1.0))
+
+        # return x_t, layer_output
+        return x_0, layer_output
 
     def invert_actions(
             self,
@@ -435,11 +437,10 @@ class Pi0(_model.BaseModel):
             hidden_states_to_add=hidden_states_to_add,
         )
 
-        def body(i, x_t):
-            time = i * dt
-            time_batched = jnp.full((batch_size,), time)
+        def step(carry):
+            x_t, time = carry
             suffix_tokens, suffix_mask, suffix_ar_mask = self.embed_suffix(
-                observation, x_t, time_batched,
+                observation, x_t, jnp.broadcast_to(time, batch_size)
             )
             suffix_attn_mask = make_attn_mask(suffix_mask, suffix_ar_mask)
             prefix_attn_mask_rep = einops.repeat(
@@ -457,9 +458,14 @@ class Pi0(_model.BaseModel):
             )
             assert prefix_out is None
             v_t = self.action_out_proj(suffix_out[:, -self.action_horizon:])
-            return x_t + dt * v_t
+            return x_t + dt * v_t, time + dt
 
-        inverted = jax.lax.fori_loop(0, num_steps, body, actions)
+        def cond(carry):
+            x_t, time = carry
+            # robust to floating-point error
+            return time <= 1.0 - dt / 2
+
+        inverted, _ = jax.lax.while_loop(cond, step, (actions, 0.0))
         return inverted, layer_output
 
     def reconstruct_from_noise(
@@ -484,11 +490,10 @@ class Pi0(_model.BaseModel):
             hidden_states_to_add=hidden_states_to_add,
         )
 
-        def body(i, x_t):
-            time = 1.0 + i * dt
-            time_batched = jnp.full((batch_size,), time)
+        def step(carry):
+            x_t, time = carry
             suffix_tokens, suffix_mask, suffix_ar_mask = self.embed_suffix(
-                observation, x_t, time_batched,
+                observation, x_t, jnp.broadcast_to(time, batch_size)
             )
             suffix_attn_mask = make_attn_mask(suffix_mask, suffix_ar_mask)
             prefix_attn_mask_rep = einops.repeat(
@@ -506,7 +511,12 @@ class Pi0(_model.BaseModel):
             )
             assert prefix_out is None
             v_t = self.action_out_proj(suffix_out[:, -self.action_horizon:])
-            return x_t + dt * v_t
+            return x_t + dt * v_t, time + dt
 
-        reconstructed = jax.lax.fori_loop(0, num_steps, body, initial_noise)
+        def cond(carry):
+            x_t, time = carry
+            # robust to floating-point error
+            return time >= -dt / 2
+
+        reconstructed, _ = jax.lax.while_loop(cond, step, (initial_noise, 1.0))
         return reconstructed, layer_output
