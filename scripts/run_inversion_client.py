@@ -386,11 +386,11 @@ def run_closed_loop_episode(
             plan_orig = np.asarray(result["actions"])           # [H,7]
             plan_recon = np.asarray(result["reconstructed_actions"])  # [H,7]
             # Execute only the first n steps from the chosen plan
-            n = min(replan_steps, len(plan_orig), len(plan_recon))
+            n = min(replan_steps, len(plan_orig), len(plan_recon)) #! 5 step 
             chosen = plan_recon if use_reconstructed_for_control else plan_orig
-            action_queue = chosen[:n].tolist()
+            action_queue = chosen[:n].tolist() 
             # Per-chunk MSE on executed segment
-            mse_chunk = float(np.mean((plan_orig[:n] - plan_recon[:n]) ** 2))
+            mse_chunk = float(np.mean((plan_orig[:n] - plan_recon[:n]) ** 2)) #! 생성 결과 - recon 결과 
             mse_list.append(mse_chunk)
             if pbar_replans:
                 pbar_replans.update(1)

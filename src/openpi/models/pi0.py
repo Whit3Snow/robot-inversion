@@ -482,6 +482,9 @@ class Pi0(_model.BaseModel):
         dt = -1.0 / num_steps
         batch_size = observation.state.shape[0]
 
+        # initial_noise = jax.random.normal(jax.random.PRNGKey(0), (batch_size, self.action_horizon, self.action_dim))
+        #! debugging 
+
         prefix_tokens, prefix_mask, prefix_ar_mask = self.embed_prefix(observation)
         prefix_attn_mask = make_attn_mask(prefix_mask, prefix_ar_mask)
         positions = jnp.cumsum(prefix_mask, axis=1) - 1
@@ -502,6 +505,11 @@ class Pi0(_model.BaseModel):
             full_attn_mask = jnp.concatenate(
                 [prefix_attn_mask_rep, suffix_attn_mask], axis=-1
             )
+            assert full_attn_mask.shape == (
+                batch_size,
+                suffix_tokens.shape[1],
+                prefix_tokens.shape[1] + suffix_tokens.shape[1],
+            )
             positions = jnp.sum(prefix_mask, axis=-1)[:, None] + jnp.cumsum(
                 suffix_mask, axis=-1
             ) - 1
@@ -520,3 +528,4 @@ class Pi0(_model.BaseModel):
 
         reconstructed, _ = jax.lax.while_loop(cond, step, (initial_noise, 1.0))
         return reconstructed, layer_output
+
